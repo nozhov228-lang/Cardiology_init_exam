@@ -152,6 +152,16 @@ ad_d = int(max(dia_r, dia_l))
 pulse_pressure = ad_s - ad_d
 dp = round(ad_s * hr / 100)  # двойное произведение
 
+# --- степень АГ (нужна ПТВ и разделам ниже) ---
+if ad_s >= 180 or ad_d >= 110:
+    degree = 3
+elif ad_s >= 160 or ad_d >= 100:
+    degree = 2
+elif ad_s >= 140 or ad_d >= 90:
+    degree = 1
+else:
+    degree = 0
+
 # --- авторасчёт ФК и стадии ХСН ---
 edema_list = ["нет", "пастозность голеней", "до нижней трети голеней",
               "до средней трети голеней", "до верхней трети голеней", "анасарка"]
@@ -345,14 +355,6 @@ with st.expander("9. Текущая терапия (для повторного 
     )
 
 # ================= РАСЧЁТ =================
-if ad_s >= 180 or ad_d >= 110:
-    degree = 3
-elif ad_s >= 160 or ad_d >= 100:
-    degree = 2
-elif ad_s >= 140 or ad_d >= 90:
-    degree = 1
-else:
-    degree = 0
 
 ckd_heavy = ckd in ("C4 (СКФ 15-29)", "C5 (СКФ <15)")
 ckd_pom = ckd in ("C3a (СКФ 45-59)", "C3b (СКФ 30-44)")
