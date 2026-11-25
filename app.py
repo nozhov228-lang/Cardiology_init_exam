@@ -162,16 +162,23 @@ elif hf_present or edema_idx >= 1:
 else:
     chf_fc_auto = "I"
 
-# ---------------- 9. ХСН — детали (ФК и стадия подставлены автоматически) ----------------
+# ---------------- 9. ХСН — детали + шкала H2FPEF ----------------
 chf_type = chf_stage = chf_fc = ""
 af = vent_arr = False
+h2fpef_score = 0
+h2fpef_items = []
+h2fpef_concl = ""
+CHF_TYPES = [
+    "ФВ не известна",
+    "ХСНнФВ (ФВ ≤ 40%)", "ХСНунФВ (ФВ 41-49%)", "ХСНсФВ (ФВ ≥ 50%)",
+]
 if chf:
     with st.expander("9. ХСН — детали (авторасчёт)", expanded=True):
-        st.caption(f"Подставлено по жалобам и объективному статусу: стадия «{chf_stage_auto}», "
-                   f"ФК {chf_fc_auto}. При необходимости поправьте вручную.")
+        st.caption(f"Стадия и ФК подставлены по жалобам и объективному статусу: "
+                   f"стадия «{chf_stage_auto}», ФК {chf_fc_auto}. При необходимости поправьте вручную.")
         c1, c2, c3 = st.columns(3)
-        chf_type = c1.selectbox("Тип ХСН (по ФВ ЛЖ)", [
-            "ХСНнФВ (ФВ ≤ 40%)", "ХСНунФВ (ФВ 41-49%)", "ХСНсФВ (ФВ ≥ 50%)"])
+        chf_type = c1.selectbox("Вид ХСН", CHF_TYPES,
+                                help="Если ЭхоКГ ещё не выполнена — оставьте «ФВ не известна».")
         stage_options = ["предстадия", "I", "II"]
         chf_stage = c2.selectbox("Стадия ХСН", stage_options,
                                  index=stage_options.index(chf_stage_auto))
@@ -181,6 +188,44 @@ if chf:
         c1, c2 = st.columns(2)
         af = c1.checkbox("Фибрилляция предсердий")
         vent_arr = c2.checkbox("Желудочковые нарушения ритма")
+
+        st.markdown("**Шкала H2FPEF — вероятность ХСНсФВ**")
+        st.caption("Показателей ЭхоКГ, которых нет, оставьте «нет данных» — балл за них не начисляется.")
+        h1, h2, h3 = st.columns(3)
+        antihtn_n = h1.number_input("Гипотензивных препаратов принимает", 0, 6, 0 if first_visit else 2,
+                                    help="Балл H (Hypertensive): 1 б при приёме 2 и более препаратов")
+        sdlg = h2.selectbox("СДЛА по ЭхоКГ", ["нет данных", "≤ 35 мм рт. ст.", "> 35 мм рт. ст."],
+                            help="Балл P (Pulmonary): 1 б при СДЛА > 35 мм рт. ст.")
+        ee = h3.selectbox("E/e' по ЭхоКГ", ["нет данных", "≤ 9", "> 9"],
+                          help="Балл F (Filling): 1 б при E/e' > 9")
+
+        h2fpef_score = 0
+        h2fpef_items = []
+        if bmi > 30:
+            h2fpef_score += 2
+            h2fpef_items.append("H (Heavy): ИМТ > 30 — 2 б")
+        if antihtn_n >= 2:
+            h2fpef_score += 1
+            h2fpef_items.append("H (Hypertensive): ≥ 2 гипотензивных препаратов — 1 б")
+        if af:
+            h2fpef_score += 3
+            h2fpef_items.append("F (Atrial fibrillation): ФП — 3 б")
+        if sdlg == "> 35 мм рт. ст.":
+            h2fpef_score += 1
+            h2fpef_items.append("P (Pulmonary): СДЛА > 35 мм рт. ст. — 1 б")
+        if age >= 60:
+            h2fpef_score += 1
+            h2fpef_items.append("E (Elder): возраст ≥ 60 лет — 1 б")
+        if ee == "> 9":
+            h2fpef_score += 1
+            h2fpef_items.append("F (Filling): E/e' > 9 — 1 б")
+        if h2fpef_score >= 6:
+            h2fpef_concl = "ХСНсФВ высоковероятна"
+        elif h2fpef_score >= 2:
+            h2fpef_concl = "требуется дообследование"
+        else:
+            h2fpef_concl = "ХСНсФВ маловероятна"
+        st.write(f"Сумма баллов H2FPEF: **{h2fpef_score} из 9** — {h2fpef_concl}.")
 
 # ---------------- 10. Текущая терапия (повторный визит) ----------------
 with st.expander("10. Текущая терапия (для повторного визита)"):
@@ -218,7 +263,6 @@ elif degree == 1:
 else:
     risk = "3 (высокий)"
 
-# цель АД и факт её достижения
 if age < 65:
     target = "130/80 мм рт. ст. (если переносится)"
     achieved = ad_s <= 130 and ad_d <= 80
@@ -274,7 +318,14 @@ else:
 chf_therapy = ""
 if chf:
     parts = []
-    if chf_type == "ХСНнФВ (ФВ ≤ 40%)":
+    if chf_type == "ФВ не известна":
+        parts.append("иАПФ (при непереносимости — АРА)")
+        if h2fpef_items:
+            parts.append(f"по шкале H2FPEF {h2fpef_score} б — {h2fpef_concl}; "
+                         "вид терапии уточнить после определения ФВ ЛЖ по ЭхоКГ")
+        else:
+            parts.append("вид терапии уточнить после определения ФВ ЛЖ по ЭхоКГ")
+    elif chf_type == "ХСНнФВ (ФВ ≤ 40%)":
         parts.append("валсартан+сакубитрил (или иАПФ при недоступности/непереносимости)")
     else:
         parts.append("иАПФ (при непереносимости — АРА или валсартан+сакубитрил)")
@@ -334,23 +385,70 @@ if chf:
     ]
     if anemia:
         chf_plan.append("Развернутый ОАК с ретикулоцитами (анемия — коррекция дефицита железа)")
-    if chf_type == "ХСНсФВ (ФВ ≥ 50%)":
-        chf_plan.append("Оценка вероятности ХСНсФВ по шкале H2FPEF: 0-1 б — маловероятна, 2-5 б — дообследование, 6-9 б — высоковероятна")
+    if chf_type in ("ХСНсФВ (ФВ ≥ 50%)", "ФВ не известна"):
+        if h2fpef_items:
+            detail = "; ".join(h2fpef_items)
+            chf_plan.append(f"Шкала H2FPEF: {h2fpef_score} б ({detail}) — {h2fpef_concl}")
+        else:
+            chf_plan.append("Шкала H2FPEF: показатели не заполнены (заполнить в разделе 9)")
     if af or vent_arr:
         chf_plan.append("Суточное мониторирование ЭКГ (холтер)")
 
 plan += chf_plan
 
+if flags:
+    st.warning("Отмечены признаки возможной вторичной АГ — в документ добавлен расширенный план обследования.")
+if chf:
+    st.info("ХСН отмечена: в документ добавлены терапия и обследование по КР156.")
+
+# --- сборка диагноза ---
+def build_dx():
+    if first_visit:
+        if degree == 0:
+            return "Артериальная гипертония не выявлена (АД < 140/90 мм рт. ст.). Контроль АД рекомендован."
+        dx = f"Гипертоническая болезнь {degree} степени"
+        if fr_list:
+            dx += ", ФР: " + ", ".join(fr_list)
+        dx += f", риск {risk}."
+        return dx
+    dx = f"Гипертоническая болезнь {stage} стадии"
+    if fr_list:
+        dx += ", ФР: " + ", ".join(fr_list)
+    ach = "целевое АД достигнуто" if achieved else "целевое АД не достигнуто"
+    dx += f", риск {risk}. {ach.capitalize()} (цель: {target}; на визите {ad_s}/{ad_d} мм рт. ст.)."
+    return dx
+
+def build_chf_dx():
+    if not chf:
+        return ""
+    tmap = {
+        "ХСНнФВ (ФВ ≤ 40%)": "ХСНнФВ (ФВ ЛЖ ≤ 40%)",
+        "ХСНунФВ (ФВ 41-49%)": "ХСНунФВ (ФВ ЛЖ 41-49%)",
+        "ХСНсФВ (ФВ ≥ 50%)": "ХСНсФВ (ФВ ЛЖ ≥ 50%)",
+        "ФВ не известна": "ХСН",
+    }
+    dx2 = "Осложнение: " + tmap.get(chf_type, "ХСН")
+    dx2 += f", {chf_stage} стадия, ФК {chf_fc}."
+    if chf_type == "ФВ не известна" and h2fpef_score >= 6:
+        dx2 += " По шкале H2FPEF наиболее вероятна ХСНсФВ — подтвердить ЭхоКГ."
+    if af:
+        dx2 += " ФП."
+    if vent_arr:
+        dx2 += " Желудочковые нарушения ритма."
+    return dx2
+
 # строка предварительного расчёта в интерфейсе
 if first_visit:
     preview_ag = f"степень АГ {degree}" if degree else "АГ не выявлена"
 else:
-    preview_ag = "АГ медикаментозно достигнута" if achieved else "АГ медикаментозно не достигнута"
+    preview_ag = "целевое АД достигнуто" if achieved else "целевое АД не достигнуто"
 st.markdown("---")
 st.markdown(
-    f"**Предварительный расчёт:** {preview_ag} · стадия {stage} · риск {risk} · "
+    f"**Предварительный расчёт:** {preview_ag} · риск {risk} · "
     f"цель АД {target} · фактическое {ad_s}/{ad_d}"
     + (f" · ХСН: стадия {chf_stage_auto}, ФК {chf_fc_auto}" if chf else "")
+    + (f" · H2FPEF: {h2fpef_score} б — {h2fpef_concl}"
+       if chf and chf_type in ("ХСНсФВ (ФВ ≥ 50%)", "ФВ не известна") else "")
 )
 
 # ================= ДОКУМЕНТ =================
@@ -399,26 +497,10 @@ def make_docx():
         doc.add_paragraph(line)
 
     doc.add_paragraph().add_run("Диагноз").bold = True
-    if first_visit:
-        if degree == 0:
-            doc.add_paragraph("Артериальная гипертония не выявлена (АД < 140/90 мм рт. ст.). Контроль АД рекомендован.")
-        else:
-            doc.add_paragraph(f"Гипертоническая болезнь {degree} степени, {stage} стадии. Риск {risk}.")
-    else:
-        ach = "целевое АД достигнуто" if achieved else "целевое АД не достигнуто"
-        doc.add_paragraph(f"Гипертоническая болезнь, {stage} стадии. {ach}. Риск {risk}. "
-                          f"Целевое АД: {target}")
-    if fr_list:
-        doc.add_paragraph("Факторы риска: " + ", ".join(fr_list) + ".")
-    else:
-        doc.add_paragraph("Факторы риска не выявлены.")
-    if chf:
-        dx2 = f"ХСН, {chf_stage} стадия, ФК {chf_fc} по NYHA, {chf_type}."
-        if af:
-            dx2 += " ФП."
-        if vent_arr:
-            dx2 += " Желудочковые нарушения ритма."
-        doc.add_paragraph(dx2)
+    doc.add_paragraph(build_dx())
+    chf_dx = build_chf_dx()
+    if chf_dx:
+        doc.add_paragraph(chf_dx)
     if comorb_list:
         doc.add_paragraph("Сопутствующие/фоновые: " + ", ".join(comorb_list) + ".")
 
