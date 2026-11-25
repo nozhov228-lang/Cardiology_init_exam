@@ -405,9 +405,9 @@ def make_docx():
         else:
             doc.add_paragraph(f"Гипертоническая болезнь {degree} степени, {stage} стадии. Риск {risk}.")
     else:
-        ach = "АГ медикаментозно достигнута" if achieved else "АГ медикаментозно не достигнута"
+        ach = "целевое АД достигнуто" if achieved else "целевое АД не достигнуто"
         doc.add_paragraph(f"Гипертоническая болезнь, {stage} стадии. {ach}. Риск {risk}. "
-                          f"Целевое АД: {target}; на визите {ad_s}/{ad_d} мм рт. ст.")
+                          f"Целевое АД: {target}")
     if fr_list:
         doc.add_paragraph("Факторы риска: " + ", ".join(fr_list) + ".")
     else:
